@@ -1,0 +1,51 @@
+# ProxyCollector example configuration.
+web:
+  listen: "0.0.0.0:27298"
+  # The filename is appended to this prefix. "/" serves /proxies.txt.
+  path_prefix: "/"
+
+output:
+  directory: "./data"
+  filename: "proxies.txt"
+
+fetch:
+  # Optional strict HTTP/HTTPS proxy for all collector requests.
+  # When configured, failures never fall back to a direct connection.
+  proxy_url: ""
+  timeout: "30s"
+
+refresh:
+  jitter_ratio: 0.1
+
+logging:
+  level: "info"
+  format: "text"
+
+collectors:
+  # An empty FPL block enables the built-in GitHub source catalog.
+  fpl:
+    refresh_interval: "6h"
+    max_response_bytes: "16MB"
+    total_max_candidates: 10000
+    fetch_concurrency: 4
+
+  # FOFA is optional. Uncomment the entire block and set a real key.
+  # fofa:
+  #   base_url: "http://fofa.icu"
+  #   key: "replace-me"
+  #   size: 100
+  #   total_max_candidates: 10000
+  #   refresh_interval: "6h"
+  #   queries:
+  #     - name: "socks5-no-auth"
+  #       protocol: "socks5"
+  #       query: 'protocol=="socks5" && banner="Method:No Authentication"'
+  #       fields: "ip,port,protocol,host"
+
+  # FreeProxyDB is optional. Only HTTP and SOCKS5 records are retained.
+  # freeproxydb:
+  #   base_url: "https://freeproxydb.com/api"
+  #   refresh_interval: "6h"
+  #   page_size: 100
+  #   request_interval: "1s"
+  #   max_candidates: 10000

@@ -1,0 +1,12 @@
+.git
+.github
+.grill
+.agents
+.codex
+data
+config.yaml
+*.local.yaml
+bin
+build
+dist
+coverage.out

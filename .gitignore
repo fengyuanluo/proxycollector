@@ -1,0 +1,24 @@
+# Runtime output and local configuration
+/data/
+/config.yaml
+*.local.yaml
+.env
+.env.*
+
+# Build output
+/bin/
+/dist/
+/build/
+*.exe
+*.test
+coverage.out
+
+# Local agent state
+/.agents/
+/.codex/
+/.grill/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
