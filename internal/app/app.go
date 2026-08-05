@@ -18,6 +18,7 @@ import (
 	"github.com/fengyuanluo/proxycollector/internal/collectors/fofa"
 	"github.com/fengyuanluo/proxycollector/internal/collectors/fpl"
 	"github.com/fengyuanluo/proxycollector/internal/collectors/freeproxydb"
+	"github.com/fengyuanluo/proxycollector/internal/collectors/rolaip"
 	"github.com/fengyuanluo/proxycollector/internal/config"
 	"github.com/fengyuanluo/proxycollector/internal/fetch"
 	"github.com/fengyuanluo/proxycollector/internal/logging"
@@ -162,7 +163,7 @@ func runServe(parent context.Context, args []string, stdout, stderr io.Writer) i
 }
 
 func buildCollectors(cfg *config.Config, client *fetch.Client) []collector.Collector {
-	items := make([]collector.Collector, 0, 3)
+	items := make([]collector.Collector, 0, 4)
 	if cfg.Collectors.FPL != nil {
 		items = append(items, fpl.New(*cfg.Collectors.FPL, client))
 	}
@@ -171,6 +172,9 @@ func buildCollectors(cfg *config.Config, client *fetch.Client) []collector.Colle
 	}
 	if cfg.Collectors.FreeProxyDB != nil {
 		items = append(items, freeproxydb.New(*cfg.Collectors.FreeProxyDB, client))
+	}
+	if cfg.Collectors.RolaIP.IsEnabled() {
+		items = append(items, rolaip.New(cfg.Collectors.RolaIP, client))
 	}
 	return items
 }

@@ -1,6 +1,6 @@
 # ProxyCollector
 
-ProxyCollector 是一个只做代理数据采集的常驻服务：从 FPL、FOFA 和
+ProxyCollector 是一个只做代理数据采集的常驻服务：从 Rola-IP、FPL、FOFA 和
 FreeProxyDB 收集 HTTP/SOCKS5 代理，规范化、全局去重并按字典序输出为
 TXT，同时通过一个只读 HTTP 端点托管该文件。
 

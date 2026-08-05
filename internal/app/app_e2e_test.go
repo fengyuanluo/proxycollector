@@ -38,6 +38,14 @@ func TestServeCollectsThroughExternalProxyAndHostsSortedTXT(t *testing.T) {
 					{"protocol": "vless", "connect_string": "vless://ignored"},
 				},
 			}})
+		case "rola.test":
+			_ = json.NewEncoder(writer).Encode(map[string]any{
+				"data": []map[string]any{
+					{"ip": "3.3.3.3", "port": 8080, "protocols": []string{"https", "socks5"}},
+					{"ip": "4.4.4.4", "port": 1080, "protocols": []string{"socks4"}},
+				},
+				"pagination": map[string]any{"page": 1, "pageSize": 500, "total": 2, "totalPages": 1},
+			})
 		default:
 			http.Error(writer, "unexpected target", http.StatusBadGateway)
 		}
@@ -88,6 +96,12 @@ collectors:
     page_size: 100
     request_interval: 0s
     max_candidates: 10
+  rolaip:
+    base_url: http://rola.test
+    refresh_interval: 1m
+    page_size: 500
+    request_interval: 1ms
+    max_candidates: 10
 `, port, directory, proxy.URL)
 	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
 		t.Fatal(err)
@@ -100,6 +114,8 @@ collectors:
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/lists/collected.txt", port)
 	want := strings.Join([]string{
 		"http://2.2.2.2:80",
+		"http://3.3.3.3:8080",
+		"socks5://3.3.3.3:8080",
 		"socks5://[2001:db8::1]:1080",
 		"socks5://user:pass@1.1.1.1:1080",
 	}, "\n") + "\n"
@@ -133,7 +149,7 @@ collectors:
 	}
 	mu.Unlock()
 	sort.Strings(hosts)
-	if got := strings.Join(hosts, ","); got != "fofa.test,fpl.test,free.test" {
+	if got := strings.Join(hosts, ","); got != "fofa.test,fpl.test,free.test,rola.test" {
 		t.Fatalf("proxied target hosts=%q", got)
 	}
 	assertOutput(t, filepath.Join(directory, "collected.txt"), want)

@@ -22,6 +22,15 @@ logging:
   format: "text"
 
 collectors:
+  # Rola-IP is enabled by default, even when this block is omitted.
+  rolaip:
+    enabled: true
+    base_url: "https://rola-ip.co/proxy-api"
+    refresh_interval: "6h"
+    page_size: 500
+    request_interval: "1s"
+    max_candidates: 10000
+
   # An empty FPL block enables the built-in GitHub source catalog.
   fpl:
     refresh_interval: "6h"

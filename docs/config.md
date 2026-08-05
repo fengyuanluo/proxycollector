@@ -35,13 +35,28 @@ HTTP/HTTPS 代理，所有采集器严格使用它；连接失败不会降级直
 ## 刷新语义
 
 - 每个采集器启动后立即刷新，随后按自己的 `refresh_interval` 独立运行。
-- 每个 FPL source、FOFA query 和 FreeProxyDB 分别维护来源状态。
+- 每个 FPL source、FOFA query、FreeProxyDB 和 Rola-IP 分别维护来源状态。
 - 非零结果即替换该来源，即使该轮被标记为 partial 或伴随后续分页错误。
 - 零结果、完全请求失败和进程取消保留该来源上次结果，且不会自动过期。
 - 从配置中删除来源时，其状态和代理会在下次启动时删除。
 - 不支持热加载、SIGHUP 或手工刷新 API；修改配置后必须重启。
 
 ## 采集器
+
+`collectors.rolaip` 默认启用；即使整块省略也会使用
+`https://rola-ip.co/proxy-api`。如需关闭，必须明确配置：
+
+```yaml
+collectors:
+  rolaip:
+    enabled: false
+```
+
+Rola-IP 按页读取站点免费代理列表。HTTP 与 HTTPS 统一输出为 `http://`；
+SOCKS5 输出为 `socks5://`；SOCKS4 和未知协议跳过。同一地址同时支持 HTTP
+和 SOCKS5 时会输出两个 URL。分页请求遵守 `request_interval` 与服务端 429
+`Retry-After`，单轮最多请求 50 页；达到页数/候选上限或后续页面失败时，保留
+本轮已取得的非零结果并标记为 partial。
 
 `collectors.fpl` 支持 `url_list` 和 `host_port`。`host_port` 必须明确指定
 `protocol: http` 或 `protocol: socks5`。空的 FPL 配置使用内置 GitHub 源目录。
@@ -52,5 +67,6 @@ HTTP/HTTPS 代理，所有采集器严格使用它；连接失败不会降级直
 `collectors.freeproxydb` 保留分页、页间隔和 429 Retry-After。只导入 HTTP 与
 SOCKS5；VMess、VLESS、Trojan、Shadowsocks、Hysteria、SOCKS4 等记录跳过。
 
-至少配置一个采集器。完整字段和边界见 [示例配置](../examples/config.yaml) 及
+关闭 Rola-IP 后，至少还须配置一个其他采集器。完整字段和边界见
+[示例配置](../examples/config.yaml) 及
 `proxycollector check -c <file>` 的确定性错误输出。

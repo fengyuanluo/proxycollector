@@ -44,6 +44,12 @@ const (
 	DefaultFreeProxyDBDelay            = time.Second
 	DefaultFreeProxyDBCandidates       = 10000
 	MaxFreeProxyDBCandidates           = 10000
+	DefaultRolaIPBaseURL               = "https://rola-ip.co/proxy-api"
+	DefaultRolaIPPageSize              = 500
+	MaxRolaIPPageSize                  = 500
+	DefaultRolaIPDelay                 = time.Second
+	DefaultRolaIPCandidates            = 10000
+	MaxRolaIPCandidates                = 10000
 	MaxConfigBytes               int64 = 4 << 20
 	MaxCandidateTextBytes              = 1 << 20
 	MaxNameBytes                       = 64
@@ -157,6 +163,7 @@ type CollectorsConfig struct {
 	FPL         *FPLConfig         `yaml:"fpl"`
 	FOFA        *FOFAConfig        `yaml:"fofa"`
 	FreeProxyDB *FreeProxyDBConfig `yaml:"freeproxydb"`
+	RolaIP      RolaIPConfig       `yaml:"rolaip"`
 }
 
 type FPLConfig struct {
@@ -199,6 +206,17 @@ type FreeProxyDBConfig struct {
 	RequestInterval Duration `yaml:"request_interval"`
 	MaxCandidates   int      `yaml:"max_candidates"`
 }
+
+type RolaIPConfig struct {
+	Enabled         *bool    `yaml:"enabled"`
+	BaseURL         string   `yaml:"base_url"`
+	RefreshInterval Duration `yaml:"refresh_interval"`
+	PageSize        int      `yaml:"page_size"`
+	RequestInterval Duration `yaml:"request_interval"`
+	MaxCandidates   int      `yaml:"max_candidates"`
+}
+
+func (c RolaIPConfig) IsEnabled() bool { return c.Enabled == nil || *c.Enabled }
 
 func Load(filename string) (*Config, error) {
 	file, err := os.Open(filename)
@@ -266,6 +284,7 @@ func (c *Config) ApplyDefaults() {
 	if c.Collectors.FreeProxyDB != nil {
 		applyFreeProxyDBDefaults(c.Collectors.FreeProxyDB)
 	}
+	applyRolaIPDefaults(&c.Collectors.RolaIP)
 }
 
 func applyFPLDefaults(c *FPLConfig) {
@@ -334,6 +353,28 @@ func applyFreeProxyDBDefaults(c *FreeProxyDBConfig) {
 	}
 }
 
+func applyRolaIPDefaults(c *RolaIPConfig) {
+	if c.Enabled == nil {
+		enabled := true
+		c.Enabled = &enabled
+	}
+	if c.BaseURL == "" {
+		c.BaseURL = DefaultRolaIPBaseURL
+	}
+	if c.RefreshInterval.Duration == 0 {
+		c.RefreshInterval.Duration = DefaultRefreshInterval
+	}
+	if c.PageSize == 0 {
+		c.PageSize = DefaultRolaIPPageSize
+	}
+	if c.RequestInterval.Duration == 0 {
+		c.RequestInterval.Duration = DefaultRolaIPDelay
+	}
+	if c.MaxCandidates == 0 {
+		c.MaxCandidates = DefaultRolaIPCandidates
+	}
+}
+
 type CheckResult struct {
 	Errors           []string
 	Warnings         []string
@@ -386,6 +427,10 @@ func (c *Config) Check() CheckResult {
 	if c.Collectors.FreeProxyDB != nil {
 		result.ActiveCollectors = append(result.ActiveCollectors, "freeproxydb")
 		checkFreeProxyDB(c.Collectors.FreeProxyDB, &result)
+	}
+	if c.Collectors.RolaIP.IsEnabled() {
+		result.ActiveCollectors = append(result.ActiveCollectors, "rolaip")
+		checkRolaIP(&c.Collectors.RolaIP, &result)
 	}
 	if len(result.ActiveCollectors) == 0 {
 		result.Errors = append(result.Errors, "at least one collector must be configured")
@@ -490,6 +535,24 @@ func checkFreeProxyDB(c *FreeProxyDBConfig, result *CheckResult) {
 	}
 	if c.MaxCandidates < 1 || c.MaxCandidates > MaxFreeProxyDBCandidates {
 		result.Errors = append(result.Errors, fmt.Sprintf("collectors.freeproxydb.max_candidates must be between 1 and %d", MaxFreeProxyDBCandidates))
+	}
+}
+
+func checkRolaIP(c *RolaIPConfig, result *CheckResult) {
+	if c.RefreshInterval.Duration < MinRefreshInterval {
+		result.Errors = append(result.Errors, "collectors.rolaip.refresh_interval must be at least 1m")
+	}
+	if err := validateHTTPURL(c.BaseURL); err != nil {
+		result.Errors = append(result.Errors, "collectors.rolaip.base_url: "+err.Error())
+	}
+	if c.PageSize < 1 || c.PageSize > MaxRolaIPPageSize {
+		result.Errors = append(result.Errors, fmt.Sprintf("collectors.rolaip.page_size must be between 1 and %d", MaxRolaIPPageSize))
+	}
+	if c.RequestInterval.Duration < 0 {
+		result.Errors = append(result.Errors, "collectors.rolaip.request_interval must not be negative")
+	}
+	if c.MaxCandidates < 1 || c.MaxCandidates > MaxRolaIPCandidates {
+		result.Errors = append(result.Errors, fmt.Sprintf("collectors.rolaip.max_candidates must be between 1 and %d", MaxRolaIPCandidates))
 	}
 }
 

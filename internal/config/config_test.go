@@ -37,6 +37,32 @@ collectors:
 	if cfg.Collectors.FPL.Sources[0].MaxCandidates != DefaultFPLSourceCandidates {
 		t.Fatalf("source defaults=%+v", cfg.Collectors.FPL.Sources[0])
 	}
+	if !cfg.Collectors.RolaIP.IsEnabled() || cfg.Collectors.RolaIP.BaseURL != DefaultRolaIPBaseURL || cfg.Collectors.RolaIP.PageSize != DefaultRolaIPPageSize {
+		t.Fatalf("rolaip defaults=%+v", cfg.Collectors.RolaIP)
+	}
+}
+
+func TestRolaIPCanBeDisabled(t *testing.T) {
+	disabled := false
+	cfg := Config{Collectors: CollectorsConfig{RolaIP: RolaIPConfig{Enabled: &disabled}}}
+	cfg.ApplyDefaults()
+	result := cfg.Check()
+	if result.OK() || !strings.Contains(strings.Join(result.Errors, "\n"), "at least one collector") {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestRolaIPRejectsInvalidSettings(t *testing.T) {
+	cfg := Config{Collectors: CollectorsConfig{RolaIP: RolaIPConfig{
+		BaseURL:  "file:///tmp/proxies.json",
+		PageSize: MaxRolaIPPageSize + 1,
+	}}}
+	cfg.ApplyDefaults()
+	result := cfg.Check()
+	joined := strings.Join(result.Errors, "\n")
+	if !strings.Contains(joined, "collectors.rolaip.base_url") || !strings.Contains(joined, "collectors.rolaip.page_size") {
+		t.Fatalf("errors=%v", result.Errors)
+	}
 }
 
 func TestLoadRejectsRemovedAIOPROXYKeys(t *testing.T) {
