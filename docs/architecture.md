@@ -10,7 +10,13 @@ Rola-IP / FPL / FOFA / FreeProxyDB
  normalize HTTP/SOCKS5 URLs
           |
           v
- per-source state -> global dedupe/sort -> atomic TXT
+ per-source state -> global dedupe
+          |
+          v
+ optional alive TCP check (direct dial, no fetch proxy)
+          |
+          v
+ sort -> atomic TXT
                                       |
                                       v
                                GET/HEAD Web endpoint
@@ -26,5 +32,7 @@ TXT。若状态已更新而进程在 TXT 重命名前退出，下次启动会从
 若 TXT 存在但状态缺失或损坏，旧 TXT 继续服务；损坏状态会改名隔离。只有当
 当前配置中的所有子来源至少完整成功一次后，才会用重建状态替换旧 TXT。
 
-产品中没有代理 listener、拨号器、代理池、验证 goroutine、会话、运行时剔除、
-SINGBOX 或管理 API。常驻任务只包括 Web server 和每个启用采集器的刷新循环。
+产品中没有代理 listener、代理池、会话、运行时剔除、SINGBOX 或管理 API。验活
+启用时存在一个验证 worker pool：它只做 TCP 端口连通性拨号（不走采集代理），
+在发布前过滤死节点；全部失败时保留上次 TXT。常驻任务只包括 Web server、每个
+启用采集器的刷新循环，以及可选的验活 worker pool。

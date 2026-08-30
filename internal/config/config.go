@@ -23,6 +23,9 @@ const (
 	DefaultOutputFilename              = "proxies.txt"
 	StateFilename                      = ".proxycollector-state.json"
 	DefaultFetchTimeout                = 30 * time.Second
+	DefaultAliveConcurrency            = 64
+	MaxAliveConcurrency                = 1024
+	DefaultAliveTimeout                = 5 * time.Second
 	DefaultRefreshInterval             = 6 * time.Hour
 	MinRefreshInterval                 = time.Minute
 	DefaultFPLMaxResponseBytes         = 16 << 20
@@ -130,6 +133,7 @@ type Config struct {
 	Web        WebConfig        `yaml:"web"`
 	Output     OutputConfig     `yaml:"output"`
 	Fetch      FetchConfig      `yaml:"fetch"`
+	Alive      AliveConfig      `yaml:"alive"`
 	Refresh    RefreshConfig    `yaml:"refresh"`
 	Logging    LoggingConfig    `yaml:"logging"`
 	Collectors CollectorsConfig `yaml:"collectors"`
@@ -148,6 +152,12 @@ type OutputConfig struct {
 type FetchConfig struct {
 	ProxyURL string   `yaml:"proxy_url"`
 	Timeout  Duration `yaml:"timeout"`
+}
+
+type AliveConfig struct {
+	Enabled     bool     `yaml:"enabled"`
+	Concurrency int      `yaml:"concurrency"`
+	Timeout     Duration `yaml:"timeout"`
 }
 
 type RefreshConfig struct {
@@ -265,6 +275,12 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.Fetch.Timeout.Duration == 0 {
 		c.Fetch.Timeout.Duration = DefaultFetchTimeout
+	}
+	if c.Alive.Concurrency == 0 {
+		c.Alive.Concurrency = DefaultAliveConcurrency
+	}
+	if c.Alive.Timeout.Duration == 0 {
+		c.Alive.Timeout.Duration = DefaultAliveTimeout
 	}
 	if c.Refresh.JitterRatio == 0 {
 		c.Refresh.JitterRatio = 0.1
@@ -405,6 +421,12 @@ func (c *Config) Check() CheckResult {
 		if err := validateProxyURL(c.Fetch.ProxyURL); err != nil {
 			result.Errors = append(result.Errors, "fetch.proxy_url: "+err.Error())
 		}
+	}
+	if c.Alive.Concurrency < 1 || c.Alive.Concurrency > MaxAliveConcurrency {
+		result.Errors = append(result.Errors, fmt.Sprintf("alive.concurrency must be between 1 and %d", MaxAliveConcurrency))
+	}
+	if c.Alive.Timeout.Duration <= 0 {
+		result.Errors = append(result.Errors, "alive.timeout must be positive")
 	}
 	if c.Refresh.JitterRatio < 0 || c.Refresh.JitterRatio > 1 {
 		result.Errors = append(result.Errors, "refresh.jitter_ratio must be between 0 and 1")

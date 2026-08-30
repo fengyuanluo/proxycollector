@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fengyuanluo/proxycollector/internal/alive"
 	"github.com/fengyuanluo/proxycollector/internal/collector"
 	"github.com/fengyuanluo/proxycollector/internal/collectors/fofa"
 	"github.com/fengyuanluo/proxycollector/internal/collectors/fpl"
@@ -125,7 +126,11 @@ func runServe(parent context.Context, args []string, stdout, stderr io.Writer) i
 	}
 
 	expected := sourceKeys(collectors)
-	store, err := state.Open(cfg.StatePath(), cfg.OutputPath(), expected)
+	var aliveFilter state.AliveFilter
+	if cfg.Alive.Enabled {
+		aliveFilter = alive.New(cfg.Alive.Concurrency, cfg.Alive.Timeout.Duration).Filter
+	}
+	store, err := state.Open(cfg.StatePath(), cfg.OutputPath(), expected, aliveFilter)
 	if err != nil {
 		logger.Error("initialize state failed", "error", err)
 		return 1
@@ -144,7 +149,7 @@ func runServe(parent context.Context, args []string, stdout, stderr io.Writer) i
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			collectionLoop(ctx, current, cfg.Refresh.JitterRatio, store, logger)
+			collectionLoop(ctx, current, cfg.Refresh.JitterRatio, cfg.Alive.Enabled, store, logger)
 		}()
 	}
 	fmt.Fprintf(stdout, "ProxyCollector serving web=%s path=%s output=%s\n", webServer.Addr(), cfg.WebPath(), cfg.OutputPath())
@@ -189,9 +194,9 @@ func sourceKeys(items []collector.Collector) []string {
 	return keys
 }
 
-func collectionLoop(ctx context.Context, item collector.Collector, jitter float64, store *state.Store, logger *slog.Logger) {
+func collectionLoop(ctx context.Context, item collector.Collector, jitter float64, aliveEnabled bool, store *state.Store, logger *slog.Logger) {
 	for {
-		collectOnce(ctx, item, store, logger)
+		collectOnce(ctx, item, aliveEnabled, store, logger)
 		if ctx.Err() != nil {
 			return
 		}
@@ -205,7 +210,7 @@ func collectionLoop(ctx context.Context, item collector.Collector, jitter float6
 	}
 }
 
-func collectOnce(ctx context.Context, item collector.Collector, store *state.Store, logger *slog.Logger) {
+func collectOnce(ctx context.Context, item collector.Collector, aliveEnabled bool, store *state.Store, logger *slog.Logger) {
 	logger.Info("collector refresh started", "collector", item.Name())
 	results := item.Collect(ctx)
 	if ctx.Err() != nil {
@@ -215,7 +220,7 @@ func collectOnce(ctx context.Context, item collector.Collector, store *state.Sto
 	for _, result := range results {
 		key := item.Name() + ":" + result.Source
 		complete := result.Report.Error == "" && !result.Report.Partial
-		update, err := store.Update(key, result.Proxies, complete)
+		update, err := store.Update(ctx, key, result.Proxies, complete)
 		if err != nil {
 			logger.Error("store collector result failed", "collector", item.Name(), "source", result.Source, "error", err)
 			continue
@@ -231,6 +236,9 @@ func collectOnce(ctx context.Context, item collector.Collector, store *state.Sto
 			attributes = append(attributes, "error", result.Report.Error)
 			logger.Warn("collector source refresh finished", attributes...)
 		} else {
+			if aliveEnabled {
+				attributes = append(attributes, "alive", update.ProxyCount, "dead", update.DeadCount)
+			}
 			logger.Info("collector source refresh finished", attributes...)
 		}
 	}

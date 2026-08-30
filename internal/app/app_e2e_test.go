@@ -206,3 +206,87 @@ func assertOutput(t *testing.T, filename, want string) {
 		t.Fatalf("output=%q want=%q", data, want)
 	}
 }
+
+func TestServeWithAliveFilterPublishesOnlyReachable(t *testing.T) {
+	target, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	aliveAddr := target.Addr().String()
+
+	deadListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadAddr := deadListener.Addr().String()
+	_ = deadListener.Close()
+	listText := fmt.Sprintf("http://%s\nhttp://%s\n", aliveAddr, deadAddr)
+
+	proxy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Host != "fpl.test" {
+			http.Error(writer, "unexpected target", http.StatusBadGateway)
+			return
+		}
+		fmt.Fprint(writer, listText)
+	}))
+	defer proxy.Close()
+
+	directory := t.TempDir()
+	port := freePort(t)
+	configPath := filepath.Join(directory, "config.yaml")
+	configText := fmt.Sprintf(`
+web:
+  listen: "127.0.0.1:%d"
+output:
+  directory: %q
+  filename: collected.txt
+fetch:
+  proxy_url: %q
+  timeout: 5s
+alive:
+  enabled: true
+  concurrency: 4
+  timeout: 500ms
+collectors:
+  rolaip:
+    enabled: false
+  fpl:
+    refresh_interval: 1m
+    total_max_candidates: 10
+    sources:
+      - name: test
+        url: http://fpl.test/list.txt
+        format: url_list
+        max_candidates: 10
+`, port, directory, proxy.URL)
+	if err := os.WriteFile(configPath, []byte(configText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan int, 1)
+	go func() { done <- Run(ctx, []string{"serve", "-c", configPath}, io.Discard, io.Discard) }()
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/collected.txt", port)
+	waitForBody(t, endpoint, "http://"+aliveAddr+"\n")
+	response, err := http.Get(endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if strings.Contains(string(body), deadAddr) {
+		t.Fatalf("dead proxy leaked into output: %q", body)
+	}
+
+	cancel()
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Fatalf("serve exit code=%d", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve did not stop")
+	}
+}

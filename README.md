@@ -4,8 +4,8 @@ ProxyCollector 是一个只做代理数据采集的常驻服务：从 Rola-IP、
 FreeProxyDB 收集 HTTP/SOCKS5 代理，规范化、全局去重并按字典序输出为
 TXT，同时通过一个只读 HTTP 端点托管该文件。
 
-它不提供代理转发、节点验活、延迟测试、调度、会话、SINGBOX、Admin API
-或 Web UI。
+它不提供代理转发、延迟测试、调度、会话、SINGBOX、Admin API 或 Web UI。
+可选启用基础 TCP 端口验活（默认关闭）：发布前只保留端口可连通的节点。
 
 ## 快速开始
 

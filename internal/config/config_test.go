@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadStrictConfigAndDefaults(t *testing.T) {
@@ -86,6 +87,34 @@ func TestCheckRejectsUnsafeOutputAndFetchProxy(t *testing.T) {
 	result := cfg.Check()
 	joined := strings.Join(result.Errors, "\n")
 	if !strings.Contains(joined, "output.filename") || !strings.Contains(joined, "fetch.proxy_url") {
+		t.Fatalf("errors=%v", result.Errors)
+	}
+}
+
+func TestAliveDefaultsAreDisabled(t *testing.T) {
+	var cfg Config
+	cfg.ApplyDefaults()
+	if cfg.Alive.Enabled || cfg.Alive.Concurrency != DefaultAliveConcurrency || cfg.Alive.Timeout.Duration != DefaultAliveTimeout {
+		t.Fatalf("alive defaults=%+v", cfg.Alive)
+	}
+	if result := cfg.Check(); !result.OK() {
+		t.Fatalf("check errors=%v", result.Errors)
+	}
+}
+
+func TestAliveRejectsInvalidSettings(t *testing.T) {
+	cfg := Config{
+		Alive: AliveConfig{
+			Enabled:     true,
+			Concurrency: MaxAliveConcurrency + 1,
+			Timeout:     Duration{Duration: -time.Second},
+		},
+		Collectors: CollectorsConfig{FPL: &FPLConfig{}},
+	}
+	cfg.ApplyDefaults()
+	result := cfg.Check()
+	joined := strings.Join(result.Errors, "\n")
+	if !strings.Contains(joined, "alive.concurrency") || !strings.Contains(joined, "alive.timeout") {
 		t.Fatalf("errors=%v", result.Errors)
 	}
 }

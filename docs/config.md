@@ -32,6 +32,24 @@ fetch:
 `proxy_url` 为空时强制直连且不读取 `HTTP_PROXY`/`HTTPS_PROXY`。非空时只接受
 HTTP/HTTPS 代理，所有采集器严格使用它；连接失败不会降级直连。
 
+## 验活
+
+```yaml
+alive:
+  enabled: false
+  concurrency: 64
+  timeout: "5s"
+```
+
+`alive` 默认关闭，开启后发布前对去重后的完整代理集合做基础 TCP 端口连通性
+检查：`concurrency` 控制并发拨号数（1–1024，默认 64），`timeout` 为单次拨号
+超时（必须为正，默认 5s）。检查是直连目标 `host:port`，不走
+`fetch.proxy_url`，只验证端口能否建立 TCP 连接，不验证协议、凭据或延迟。
+
+开启后 TXT 只包含存活节点；来源状态仍保留采集全量，下一轮可重新验证。一轮
+验活全部失败时保留上次发布的 TXT，避免临时网络问题导致列表清空；不存在 TXT
+时不创建空文件。
+
 ## 刷新语义
 
 - 每个采集器启动后立即刷新，随后按自己的 `refresh_interval` 独立运行。

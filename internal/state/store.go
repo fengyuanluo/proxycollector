@@ -2,6 +2,7 @@ package state
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,17 +39,23 @@ type UpdateResult struct {
 	Published       bool
 	ProxyCount      int
 	RecoveryPending int
+	DeadCount       int
 }
+
+// AliveFilter keeps only proxy URLs that should be published. It is applied
+// to the aggregate proxy set right before the TXT file is written.
+type AliveFilter func(context.Context, []string) []string
 
 type Store struct {
 	mu         sync.Mutex
 	statePath  string
 	outputPath string
 	expected   map[string]struct{}
+	alive      AliveFilter
 	state      persistedState
 }
 
-func Open(statePath, outputPath string, expectedSources []string) (*Store, error) {
+func Open(statePath, outputPath string, expectedSources []string, filters ...AliveFilter) (*Store, error) {
 	if filepath.Dir(statePath) != filepath.Dir(outputPath) {
 		return nil, fmt.Errorf("state and output files must share a directory")
 	}
@@ -69,6 +76,9 @@ func Open(statePath, outputPath string, expectedSources []string) (*Store, error
 			return nil, fmt.Errorf("duplicate expected source key %q", source)
 		}
 		store.expected[source] = struct{}{}
+	}
+	if len(filters) > 0 {
+		store.alive = filters[0]
 	}
 	if err := store.load(); err != nil {
 		return nil, err
@@ -124,7 +134,8 @@ func (s *Store) load() error {
 	if len(s.state.RecoveryPending) > 0 {
 		return nil
 	}
-	return s.publishLocked()
+	_, err = s.publishLocked(context.Background())
+	return err
 }
 
 func (s *Store) enterRecovery() {
@@ -156,7 +167,7 @@ func (s *Store) pruneUnknownLocked() bool {
 	return changed
 }
 
-func (s *Store) Update(source string, proxies []model.Proxy, complete bool) (UpdateResult, error) {
+func (s *Store) Update(ctx context.Context, source string, proxies []model.Proxy, complete bool) (UpdateResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, expected := s.expected[source]; !expected {
@@ -183,12 +194,7 @@ func (s *Store) Update(source string, proxies []model.Proxy, complete bool) (Upd
 	if len(s.state.RecoveryPending) > 0 {
 		return result, nil
 	}
-	if err := s.publishLocked(); err != nil {
-		return UpdateResult{}, err
-	}
-	result.Published = true
-	result.ProxyCount = len(s.aggregateLocked())
-	return result, nil
+	return s.publishLocked(ctx)
 }
 
 func (s *Store) aggregateLocked() []string {
@@ -219,20 +225,33 @@ func (s *Store) saveStateLocked() error {
 	return writeAtomic(s.statePath, data, 0o600)
 }
 
-func (s *Store) publishLocked() error {
+func (s *Store) publishLocked(ctx context.Context) (UpdateResult, error) {
 	proxies := s.aggregateLocked()
+	total := len(proxies)
+	dead := 0
+	if s.alive != nil {
+		proxies = s.alive(ctx, proxies)
+		dead = total - len(proxies)
+	}
 	if len(proxies) == 0 {
-		if err := os.Remove(s.outputPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("remove empty output: %w", err)
+		if s.alive != nil {
+			// Keep the last published list when validation removes everything.
+			return UpdateResult{DeadCount: dead}, nil
 		}
-		return nil
+		if err := os.Remove(s.outputPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return UpdateResult{}, fmt.Errorf("remove empty output: %w", err)
+		}
+		return UpdateResult{}, nil
 	}
 	var output strings.Builder
 	for _, proxyURL := range proxies {
 		output.WriteString(proxyURL)
 		output.WriteByte('\n')
 	}
-	return writeAtomic(s.outputPath, []byte(output.String()), 0o644)
+	if err := writeAtomic(s.outputPath, []byte(output.String()), 0o644); err != nil {
+		return UpdateResult{}, err
+	}
+	return UpdateResult{Published: true, ProxyCount: len(proxies), DeadCount: dead}, nil
 }
 
 func canonicalURLs(proxies []model.Proxy) ([]string, error) {

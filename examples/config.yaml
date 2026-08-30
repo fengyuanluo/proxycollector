@@ -14,6 +14,14 @@ fetch:
   proxy_url: ""
   timeout: "30s"
 
+alive:
+  # Optional basic TCP port check before publishing. When enabled, only
+  # proxies whose host:port accepts a connection are written to the TXT.
+  # Direct dials only; protocol/credentials/latency are not verified.
+  enabled: false
+  concurrency: 64
+  timeout: "5s"
+
 refresh:
   jitter_ratio: 0.1
 
